@@ -10,11 +10,12 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font:15px/1
 #c{position:absolute;inset:0;touch-action:none}
 #ui{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));max-width:420px;margin:0 auto;background:var(--panel);border-radius:14px;padding:12px 16px}
 #ui label{display:flex;justify-content:space-between;font-weight:600}
-#ui input{width:100%;accent-color:var(--accent);margin:8px 0}
+#ui input{width:100%;height:28px;accent-color:var(--accent);margin:8px 0}
 #st{margin:0;font-size:14px}
 #hint{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));left:0;right:0;text-align:center;font-size:13px;opacity:.7}
 #bt{display:flex;gap:6px;margin-top:8px}
-#bt button{flex:1;padding:7px 4px;border:1px solid var(--accent);border-radius:8px;background:none;color:var(--ink);font:inherit;font-size:13px}
+#bt button{flex:1;padding:12px 4px;min-height:44px;border:1px solid var(--accent);border-radius:8px;background:none;color:var(--ink);font:inherit;font-size:14px;touch-action:manipulation}
+@media (orientation:landscape) and (max-height:500px){#ui{left:auto;right:calc(12px + env(safe-area-inset-right,0px));bottom:12px;width:300px;margin:0}#hint{display:none}}
 </style></head><body>
 <div id="c"></div>
 <div id="hint">Drag to rotate, pinch or scroll to zoom</div>
@@ -24,7 +25,7 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font:15px/1
 <script>
 const host=document.getElementById('c');
 const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
-renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setPixelRatio(Math.min(devicePixelRatio,innerWidth<700?1.5:2));
 host.appendChild(renderer.domElement);
 const scene=new THREE.Scene();
 const cam=new THREE.PerspectiveCamera(45,1,0.1,200);
@@ -188,6 +189,13 @@ function update(){
 }
 
 // orbit camera
+const portrait=()=>innerWidth/innerHeight<0.8;
+const D=(hw,hh)=>Math.max(hw/(0.4142*(innerWidth/innerHeight)),(hh/0.4142)*(portrait()?1.3:1));
+function setView(k){const p=portrait();
+  if(k==='a'){az=p?Math.PI/2:0.85;pol=p?0.55:1.0;dist=p?D(9.8,15):36;}
+  else if(k==='t'){az=p?Math.PI/2:0;pol=0.2;dist=p?D(9.8,15):42;}
+  else{az=0;pol=1.35;dist=p?D(15.5,5):36;}
+  target.x=(p&&k!=='s')?5:8;}
 let az=0.85,pol=1.0,dist=36;const target=new THREE.Vector3(8,1.5,0);
 function place(){
   cam.position.set(target.x+dist*Math.sin(pol)*Math.sin(az),target.y+dist*Math.cos(pol),target.z+dist*Math.sin(pol)*Math.cos(az));
@@ -196,17 +204,17 @@ function place(){
 const ptrs=new Map();let pd=0;
 const el=renderer.domElement;
 el.addEventListener('pointerdown',e=>{el.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,e);});
-el.addEventListener('pointerup',e=>{ptrs.delete(e.pointerId);pd=0;});
+['pointerup','pointercancel'].forEach(t=>el.addEventListener(t,e=>{ptrs.delete(e.pointerId);pd=0;}));
 el.addEventListener('pointermove',e=>{
   if(!ptrs.has(e.pointerId))return;
   const prev=ptrs.get(e.pointerId);ptrs.set(e.pointerId,e);
   if(ptrs.size===1){az-=(e.clientX-prev.clientX)*0.006;pol=Math.min(1.45,Math.max(0.2,pol-(e.clientY-prev.clientY)*0.006));}
-  else if(ptrs.size===2){const [a,b]=[...ptrs.values()];const d=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);if(pd)dist=Math.min(60,Math.max(8,dist*pd/d));pd=d;}
+  else if(ptrs.size===2){const [a,b]=[...ptrs.values()];const d=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);if(pd)dist=Math.min(90,Math.max(8,dist*pd/d));pd=d;}
 });
-el.addEventListener('wheel',e=>{e.preventDefault();dist=Math.min(60,Math.max(8,dist*(1+e.deltaY*0.001)));},{passive:false});
-document.querySelectorAll('#bt button[data-v]').forEach(b=>b.onclick=()=>{const v=b.dataset.v.split(',');az=+v[0];pol=+v[1];dist=v[1]<0.5?42:36;});
+el.addEventListener('wheel',e=>{e.preventDefault();dist=Math.min(90,Math.max(8,dist*(1+e.deltaY*0.001)));},{passive:false});
+document.querySelectorAll('#bt button[data-v]').forEach(b=>b.onclick=()=>{const v=b.dataset.v.split(',');setView(v[1]==='0.2'?'t':v[1]==='1.35'?'s':'a');});
 document.getElementById('hd').onclick=()=>{const u=document.getElementById('ui'),h=document.getElementById('hint');u.style.display=h.style.display='none';setTimeout(()=>{u.style.display='';h.style.display='';},6000);};
-function size(){renderer.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();}
-addEventListener('resize',size);size();
+function size(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h);cam.aspect=w/h;const u=document.getElementById('ui');const land=matchMedia('(orientation:landscape) and (max-height:500px)').matches;cam.setViewOffset(w,h,land?150:0,land?0:(u?u.offsetHeight/2:0),w,h);cam.updateProjectionMatrix();}
+addEventListener('resize',size);size();setView('a');addEventListener('orientationchange',()=>setTimeout(()=>setView('a'),300));if(window.ResizeObserver)new ResizeObserver(size).observe(document.getElementById('ui'));
 (function loop(){requestAnimationFrame(loop);update();place();renderer.render(scene,cam);})();
 </script></body></html>
