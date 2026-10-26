@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Smart flood-watch barangay court</title>
+<style>
+:root{--bg:#cfe3ee;--panel:#ffffffe6;--ink:#1d2b33;--accent:#2a6f97;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#16222b;--panel:#10181ee8;--ink:#e6eef3;--accent:#7fc4e8;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#16222b;--panel:#10181ee8;--ink:#e6eef3;--accent:#7fc4e8;color-scheme:dark}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,sans-serif;overflow:hidden}
+#c{position:absolute;inset:0;touch-action:none}
+#ui{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));max-width:420px;margin:0 auto;background:var(--panel);border-radius:14px;padding:12px 16px}
+#ui label{display:flex;justify-content:space-between;font-weight:600}
+#ui input{width:100%;accent-color:var(--accent);margin:8px 0}
+#st{margin:0;font-size:14px}
+#hint{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));left:0;right:0;text-align:center;font-size:13px;opacity:.7}
+#bt{display:flex;gap:6px;margin-top:8px}
+#bt button{flex:1;padding:7px 4px;border:1px solid var(--accent);border-radius:8px;background:none;color:var(--ink);font:inherit;font-size:13px}
+</style></head><body>
+<div id="c"></div>
+<div id="hint">Drag to rotate, pinch or scroll to zoom</div>
+<div id="ui"><label for="r"><span>Rainfall</span><span id="rv">55%</span></label>
+<input id="r" type="range" min="0" max="100" value="55"><p id="st"></p><div id="bt"><button data-v="0.85,1.0">Angled</button><button data-v="0,0.2">Top</button><button data-v="0,1.35">Side</button><button id="hd">Clean view</button></div></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const host=document.getElementById('c');
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+host.appendChild(renderer.domElement);
+const scene=new THREE.Scene();
+const cam=new THREE.PerspectiveCamera(45,1,0.1,200);
+scene.add(new THREE.HemisphereLight(0xffffff,0x7a9a50,0.95));
+const sun=new THREE.DirectionalLight(0xffffff,0.8);sun.position.set(-8,16,10);scene.add(sun);
+
+const M=(c,o)=>new THREE.MeshLambertMaterial(Object.assign({color:c},o||{}));
+function add(g,mat,x,y,z,p){const m=new THREE.Mesh(g,mat);m.position.set(x,y,z);(p||scene).add(m);return m;}
+const box=(w,h,d,mat,x,y,z,p)=>add(new THREE.BoxGeometry(w,h,d),mat,x,y,z,p);
+const cyl=(rt,rb,h,mat,x,y,z,p,s)=>add(new THREE.CylinderGeometry(rt,rb,h,s||16),mat,x,y,z,p);
+
+// ground and road
+box(44,0.2,26,M(0x8aab3a),3,-0.1,0);
+box(5,0.06,26,M(0x45403f),-5,0.03,0);
+box(1,0.07,26,M(0xffd84d),-8.2,0.03,0);
+box(0.1,0.08,26,M(0xffffff),-2.6,0.04,0);
+box(0.1,0.08,26,M(0xffffff),-7.4,0.04,0);
+for(let z=-11;z<=11;z+=2.5)box(0.14,0.08,1.2,M(0xffffff),-5,0.04,z);
+
+// LEDs along the road edge
+const leds=[];
+for(let z=-3;z<=11;z+=3.5){
+  const mat=M(0xb01c1c,{emissive:0x000000});
+  const m=add(new THREE.SphereGeometry(0.28,16,10),mat,-3.1,0.3,z);m.scale.set(1.4,1,1);
+  box(0.5,0.1,0.5,M(0x888888),-2.8,0.06,z);
+  leds.push(mat);
+}
+
+// water level sensor
+box(1.4,0.9,1.4,M(0xbfe6f5,{transparent:true,opacity:0.35}),-3.3,0.5,-6);
+const water=box(1.3,0.8,1.3,M(0x2f9fe0,{transparent:true,opacity:0.85}),-3.3,0.1,-6);
+box(0.12,1.3,0.12,M(0xcccccc),-3.3,1.0,-6);
+box(0.4,0.3,0.3,M(0xf0b43c),-3.3,1.75,-6);
+
+// lamp posts
+function post(x,z,h){
+  cyl(0.35,0.5,0.9,M(0x151515),x,0.45,z);
+  cyl(0.09,0.09,h,M(0x1a1a1a),x,h/2,z,scene,8);
+}
+post(-1.2,0,5);post(-1.2,5,3.2);
+
+// servo motor + foldable roof
+box(0.75,0.95,0.55,M(0x1b8fb0),-1.2,5.45,0);
+const disc=cyl(0.22,0.22,0.12,M(0xdddddd),-0.78,5.6,0);disc.rotation.x=Math.PI/2;
+const roof=new THREE.Group();roof.position.set(-0.78,5.6,-0.7);scene.add(roof);
+const panels=[];
+for(let i=0;i<9;i++)panels.push(box(2,0.1,13,M(i%2?0xf0b43c:0xd99a22),0,0,0,roof));
+
+// rainfall sensor
+const dish=add(new THREE.SphereGeometry(0.65,20,10,0,Math.PI*2,0,Math.PI/2),M(0x7fe3f0,{side:THREE.DoubleSide}),-1.2,3.4,5);
+dish.rotation.x=Math.PI;dish.position.y=3.55;
+cyl(0.05,0.05,0.4,M(0x15203a),-1.2,3.5,5);
+
+// basketball court
+const WOOD=M(0x8f9a8a),PAINT=M(0xc0392b),LINE=M(0xf4f0dc);
+box(17,0.05,10.5,M(0xb3b0a6),7,0.025,0);
+box(14,0.08,7.5,WOOD,7,0.04,0);
+box(2.9,0.09,2.45,PAINT,1.45,0.045,0);box(2.9,0.09,2.45,PAINT,12.55,0.045,0);
+box(14,0.1,0.1,LINE,7,0.05,3.75);box(14,0.1,0.1,LINE,7,0.05,-3.75);
+box(0.1,0.1,7.5,LINE,0,0.05,0);box(0.1,0.1,7.5,LINE,14,0.05,0);box(0.1,0.1,7.5,LINE,7,0.05,0);
+function ring(r0,r1,x,t0,t1){const m=add(new THREE.RingGeometry(r0,r1,48,1,t0,t1),new THREE.MeshBasicMaterial({color:0xffffff,side:THREE.DoubleSide}),x,0.1,0);m.rotation.x=-Math.PI/2;}
+ring(0.85,0.95,7,0,Math.PI*2);
+ring(3.25,3.35,0.7,-1.1,2.2);ring(3.25,3.35,13.3,Math.PI-1.1,2.2);
+function hoop(dir){
+  const px=dir>0?-0.45:14.45,bx=dir>0?0.12:13.88,rx=dir>0?0.55:13.45;
+  cyl(0.07,0.07,3.3,M(0x333333),px,1.65,0,scene,8);
+  box(Math.abs(bx-px),0.08,0.08,M(0x333333),(px+bx)/2,3.2,0);
+  box(0.07,1.0,1.5,M(0xf2f2f2,{transparent:true,opacity:0.85}),bx,3.0,0);
+  const r=add(new THREE.TorusGeometry(0.28,0.025,8,24),M(0xe8661a),rx,2.8,0);r.rotation.x=Math.PI/2;
+  add(new THREE.CylinderGeometry(0.28,0.16,0.4,12,1,true),new THREE.MeshBasicMaterial({color:0xffffff,wireframe:true}),rx,2.58,0);
+}
+hoop(1);hoop(-1);
+// stage with tarpaulin backdrop
+box(3.5,0.9,7.5,M(0x8c5a3c),16.9,0.45,0);
+box(0.1,0.12,7.5,M(0xf4c430),15.1,0.9,0);
+const tc=document.createElement('canvas');tc.width=512;tc.height=170;const tx=tc.getContext('2d');
+tx.fillStyle='#1c4fa0';tx.fillRect(0,0,512,170);tx.fillStyle='#f4c430';tx.fillRect(0,0,512,14);tx.fillRect(0,156,512,14);
+tx.fillStyle='#fff';tx.textAlign='center';tx.font='bold 54px sans-serif';tx.fillText('BARANGAY MALIGAYA',256,80);
+tx.fillStyle='#f4c430';tx.font='bold 30px sans-serif';tx.fillText('Multi-Purpose Covered Court',256,125);
+const tarp=add(new THREE.PlaneGeometry(7,2.3),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(tc)}),18.3,2.7,0);tarp.rotation.y=-Math.PI/2;
+[-3.7,3.7].forEach(z=>box(0.12,3.2,0.8,M(0x7a1f2b),18.2,2.5,z));
+// concrete bleachers with spectators
+for(let i=0;i<3;i++)box(13,0.35*(i+1),0.8,M(i%2?0xd6d2c4:0xc2bdae),7,0.175*(i+1),-4.6-0.8*i);
+[[2,0],[4.5,1],[6,0],[9,2],[11,1],[7.5,2]].forEach((s,k)=>{
+  const top=0.35*(s[1]+1),z=-4.6-0.8*s[1],col=[0xe8c547,0x3a9d6b,0xd64545,0xf2f2f2][k%4];
+  cyl(0.25,0.28,0.6,M(col),s[0],top+0.5,z);add(new THREE.SphereGeometry(0.22,12,8),M(0xb98058),s[0],top+1.0,z);
+});
+// monobloc chairs
+for(let k=0;k<8;k++){
+  const x=1.5+k*1.5,c=M([0xd64545,0x3a7bd5,0xf2f2f2][k%3]);
+  box(0.3,0.43,0.3,c,x,0.22,4.7);box(0.45,0.05,0.45,c,x,0.45,4.7);box(0.45,0.4,0.05,c,x,0.7,4.95);
+}
+// walls: concrete half-walls plus roll-down curtains
+const curt=[];
+const CM=M(0xbfe9f7,{transparent:true,opacity:0.32,side:THREE.DoubleSide,emissive:0x2a5a6a});
+[[8.5,-7,21,0],[8.5,5.6,21,0],[-2,-0.7,12.6,1],[19,-0.7,12.6,1]].forEach(w=>{
+  const x=w[0],z=w[1],len=w[2],end=w[3];
+  box(end?0.25:len,1.0,end?len:0.25,M(0xc9c5b8),x,0.5,z);
+  box(end?0.15:len,0.15,end?len:0.15,M(0x555555),x,5.55,z);
+  curt.push(box(end?0.05:len,1,end?len:0.05,CM,x,5,z));
+});
+[[-2,-7],[-2,5.6],[19,-7],[19,5.6],[8.5,-7],[8.5,5.6]].forEach(p=>cyl(0.1,0.1,5.55,M(0x555555),p[0],2.78,p[1],scene,8));
+// banderitas
+[-4.0,4.3].forEach(z=>{
+  [-0.1,14.1].forEach(x=>cyl(0.04,0.04,3.7,M(0x444444),x,1.85,z,scene,6));
+  box(14.2,0.02,0.02,M(0x333333),7,3.55,z);
+  const cols=[0xd64545,0xf4c430,0x3a7bd5,0xffffff,0x3a9d6b];
+  for(let k=0;k<28;k++){const f=add(new THREE.ConeGeometry(0.17,0.34,3),M(cols[k%5]),0.25+k*0.5,3.35,z);f.rotation.z=Math.PI;f.scale.z=0.15;}
+});
+function player(x,z,jersey){
+  cyl(0.19,0.19,0.4,M(0xb98058),x,0.2,z);cyl(0.25,0.23,0.35,M(0x1b2a4a),x,0.57,z);
+  cyl(0.3,0.33,0.8,M(jersey),x,1.1,z);
+  add(new THREE.SphereGeometry(0.24,14,10),M(0xb98058),x,1.7,z);
+}
+[[3.5,-1.8],[5,0.8],[8.2,-2.2]].forEach(p=>player(p[0],p[1],0x3a7bd5));
+[[4.3,2.4],[7,0.2],[9.5,1.6]].forEach(p=>player(p[0],p[1],0xd64545));
+const ball=add(new THREE.SphereGeometry(0.22,16,12),M(0xe8661a),5.6,0.3,0.8);
+
+// rain
+const N=700,rp=new Float32Array(N*6),rd=[];
+for(let i=0;i<N;i++)rd.push({x:-9+Math.random()*30,y:Math.random()*10,z:-11+Math.random()*22,s:0.25+Math.random()*0.2});
+const rg=new THREE.BufferGeometry();rg.setAttribute('position',new THREE.BufferAttribute(rp,3));
+const rm=new THREE.LineBasicMaterial({color:0x6fb7e6,transparent:true,opacity:0.7});
+scene.add(new THREE.LineSegments(rg,rm));
+
+// state
+const slider=document.getElementById('r'),rv=document.getElementById('rv'),st=document.getElementById('st');
+let level=0,open=0,spin=0;
+function update(){
+  const r=slider.value/100;rv.textContent=slider.value+'%';
+  level+=(r-level)*0.015;
+  open+=((r>0.15?1:0)-open)*0.04;
+  const alert=level>0.55;
+  const t=performance.now()/1000;
+  leds.forEach((m,i)=>{
+    const on=alert?(0.6+0.4*Math.sin(t*5-i*0.8)):0;
+    m.emissive.setRGB(on,on*0.1,on*0.1);
+  });
+  water.scale.y=0.06+level*0.94;water.position.y=0.1+0.4*water.scale.y*0.8;
+  // accordion roof
+  const th=0;let x=0,y=0;
+  panels.forEach((p,i)=>{
+    const a=(i%2?-1:1)*th;
+    p.rotation.z=a;
+    p.position.set(x+Math.cos(a),y+Math.sin(a),0);
+    x+=2*Math.cos(a);y+=2*Math.sin(a);
+  });
+  ball.position.y=0.22+Math.abs(Math.sin(t*5))*0.9;
+  curt.forEach(c=>{const h=0.2+open*4.3;c.scale.y=h;c.position.y=5.5-h/2;});
+  disc.rotation.y=open*Math.PI*1.5;
+  // rain
+  const n=Math.floor(r*N);
+  for(let i=0;i<N;i++){
+    const d=rd[i];d.y-=d.s;if(d.y<0)d.y=10;
+    rp.set([d.x,d.y,d.z,d.x-0.05,d.y-0.5,d.z],i*6);
+  }
+  rg.attributes.position.needsUpdate=true;rg.setDrawRange(0,n*2);
+  st.textContent=alert?'Flood risk: water is high, road LEDs are flashing.'
+    :r>0.15?'Rain detected: glass walls are closing.'
+    :'Dry: glass walls open, LEDs off.';
+}
+
+// orbit camera
+let az=0.85,pol=1.0,dist=36;const target=new THREE.Vector3(8,1.5,0);
+function place(){
+  cam.position.set(target.x+dist*Math.sin(pol)*Math.sin(az),target.y+dist*Math.cos(pol),target.z+dist*Math.sin(pol)*Math.cos(az));
+  cam.lookAt(target);
+}
+const ptrs=new Map();let pd=0;
+const el=renderer.domElement;
+el.addEventListener('pointerdown',e=>{el.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,e);});
+el.addEventListener('pointerup',e=>{ptrs.delete(e.pointerId);pd=0;});
+el.addEventListener('pointermove',e=>{
+  if(!ptrs.has(e.pointerId))return;
+  const prev=ptrs.get(e.pointerId);ptrs.set(e.pointerId,e);
+  if(ptrs.size===1){az-=(e.clientX-prev.clientX)*0.006;pol=Math.min(1.45,Math.max(0.2,pol-(e.clientY-prev.clientY)*0.006));}
+  else if(ptrs.size===2){const [a,b]=[...ptrs.values()];const d=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);if(pd)dist=Math.min(60,Math.max(8,dist*pd/d));pd=d;}
+});
+el.addEventListener('wheel',e=>{e.preventDefault();dist=Math.min(60,Math.max(8,dist*(1+e.deltaY*0.001)));},{passive:false});
+document.querySelectorAll('#bt button[data-v]').forEach(b=>b.onclick=()=>{const v=b.dataset.v.split(',');az=+v[0];pol=+v[1];dist=v[1]<0.5?42:36;});
+document.getElementById('hd').onclick=()=>{const u=document.getElementById('ui'),h=document.getElementById('hint');u.style.display=h.style.display='none';setTimeout(()=>{u.style.display='';h.style.display='';},6000);};
+function size(){renderer.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();}
+addEventListener('resize',size);size();
+(function loop(){requestAnimationFrame(loop);update();place();renderer.render(scene,cam);})();
+</script></body></html>
